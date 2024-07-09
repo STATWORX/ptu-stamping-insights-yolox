@@ -5,7 +5,9 @@ import datetime
 import os
 import time
 from loguru import logger
-
+from azureml.core import Run
+import mlflow
+from mlflow.tracking import MlflowClient
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
@@ -37,6 +39,12 @@ class Trainer:
     def __init__(self, exp: Exp, args):
         # init function only defines some basic attr, other attrs like model, optimizer are built in
         # before_train methods.
+        run = Run.get_context()
+        mlflow_tracking_uri = run.experiment.workspace.get_mlflow_tracking_uri()
+        mlflow.set_tracking_uri(mlflow_tracking_uri)
+        mlflow.start_run()
+        self.mlflow_run_id = mlflow.active_run().info.run_id
+
         self.exp = exp
         self.args = args
 
@@ -69,6 +77,27 @@ class Trainer:
             filename="train_log.txt",
             mode="a",
         )
+        self.log_mlflow_param("max_epoch", self.max_epoch)
+        self.log_mlflow_param("batch_size", self.args.batch_size)
+        self.log_mlflow_param("device", self.device)
+        self.log_mlflow_param("input_size", self.input_size)
+
+
+    def log_mlflow_metric(self, key, value, step=0):
+        MlflowClient().log_metric(
+                run_id=self.mlflow_run_id,
+                key=key,
+                value=value,
+                step=step
+        )
+
+    def log_mlflow_param(self, key, value):
+        MlflowClient().log_param(
+                run_id=self.mlflow_run_id,
+                key=key,
+                value=value,
+        )
+
 
     def train(self):
         self.before_train()
@@ -78,11 +107,14 @@ class Trainer:
             raise
         finally:
             self.after_train()
+        mlflow.end_run()
+
 
     def train_in_epoch(self):
         for self.epoch in range(self.start_epoch, self.max_epoch):
             self.before_epoch()
             self.train_in_iter()
+            self.log_mlflow_metric("epoch_loss_iou", float(self.losses_iou[-1]), step=self.epoch)
             self.after_epoch()
 
     def train_in_iter(self):
@@ -106,6 +138,9 @@ class Trainer:
 
         loss = outputs["total_loss"]
 
+        self.log_mlflow_metric("iter_loss_iou", float(outputs["iou_loss"]), step=self.iter)
+
+        self.losses_iou.append(float(outputs["iou_loss"]))
         self.optimizer.zero_grad()
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
@@ -199,8 +234,11 @@ class Trainer:
             if self.args.logger == "wandb":
                 self.wandb_logger.finish()
 
+
     def before_epoch(self):
         logger.info("---> start train epoch{}".format(self.epoch + 1))
+
+        self.losses_iou = []
 
         if self.epoch + 1 == self.max_epoch - self.exp.no_aug_epochs or self.no_aug:
             logger.info("--->No mosaic aug now!")
@@ -216,6 +254,9 @@ class Trainer:
 
     def after_epoch(self):
         self.save_ckpt(ckpt_name="latest")
+
+        epoch_loss_iou = sum(self.losses_iou) / len(self.losses_iou)
+        self.log_mlflow_metric("epoch_loss_iou_norm", epoch_loss_iou)
 
         if (self.epoch + 1) % self.exp.eval_interval == 0:
             all_reduce_norm(self.model)
