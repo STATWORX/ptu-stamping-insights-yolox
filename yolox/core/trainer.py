@@ -12,6 +12,7 @@ import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
 
+from yolox.utils.log_mlflow import MLFlowLogger
 from yolox.data import DataPrefetcher
 from yolox.exp import Exp
 from yolox.utils import (
@@ -39,12 +40,7 @@ class Trainer:
     def __init__(self, exp: Exp, args):
         # init function only defines some basic attr, other attrs like model, optimizer are built in
         # before_train methods.
-        run = Run.get_context()
-        mlflow_tracking_uri = run.experiment.workspace.get_mlflow_tracking_uri()
-        mlflow.set_tracking_uri(mlflow_tracking_uri)
-        mlflow.start_run()
-        self.mlflow_run_id = mlflow.active_run().info.run_id
-
+        self.mlflow_logger = MLFlowLogger()
         self.exp = exp
         self.args = args
 
@@ -77,33 +73,10 @@ class Trainer:
             filename="train_log.txt",
             mode="a",
         )
-        self.log_mlflow_param("max_epoch", self.max_epoch)
-        self.log_mlflow_param("batch_size", self.args.batch_size)
-        self.log_mlflow_param("device", self.device)
-        self.log_mlflow_param("input_size", self.input_size)
-
-
-    def log_mlflow_metric(self, key, value, step=0):
-        MlflowClient().log_metric(
-                run_id=self.mlflow_run_id,
-                key=key,
-                value=value,
-                step=step
-        )
-
-    def log_mlflow_param(self, key, value):
-        MlflowClient().log_param(
-                run_id=self.mlflow_run_id,
-                key=key,
-                value=value,
-        )
-
-    def log_mlflow_text(self, text, artifact_file):
-        MlflowClient().log_text(
-                run_id=self.mlflow_run_id,
-                text=text,
-                artifact_file=artifact_file
-        )
+        self.mlflow_logger.log_param("max_epoch", self.max_epoch)
+        self.mlflow_logger.log_param("batch_size", self.args.batch_size)
+        self.mlflow_logger.log_param("device", self.device)
+        self.mlflow_logger.log_param("input_size", self.input_size)
 
 
     def train(self):
@@ -114,14 +87,13 @@ class Trainer:
             raise
         finally:
             self.after_train()
-        mlflow.end_run()
 
 
     def train_in_epoch(self):
         for self.epoch in range(self.start_epoch, self.max_epoch):
             self.before_epoch()
             self.train_in_iter()
-            self.log_mlflow_metric(
+            self.mlflow_logger.log_metric(
                 "epoch_loss_iou", 
                 float(self.losses_iou[-1]), 
                 step=self.epoch + 1
@@ -149,10 +121,10 @@ class Trainer:
 
         loss = outputs["total_loss"]
 
-        self.log_mlflow_metric(
+        self.mlflow_logger.log_metric(
             "iter_loss_iou", 
-            float(outputs["iou_loss"]) / self.iter + 1, 
-            step=(self.iter + 1)
+            float(outputs["iou_loss"]) / (self.iter + 1), 
+            step=self.iter + 1
         )
 
         self.losses_iou.append(float(outputs["iou_loss"]))
@@ -271,7 +243,7 @@ class Trainer:
         self.save_ckpt(ckpt_name="latest")
 
         epoch_loss_iou = sum(self.losses_iou) / len(self.losses_iou)
-        self.log_mlflow_metric("epoch_loss_iou_norm", epoch_loss_iou, step=self.epoch + 1)
+        self.mlflow_logger.log_metric("epoch_loss_iou_norm", epoch_loss_iou, step=self.epoch + 1)
 
         if (self.epoch + 1) % self.exp.eval_interval == 0:
             all_reduce_norm(self.model)
@@ -408,9 +380,9 @@ class Trainer:
                 })
                 self.wandb_logger.log_images(predictions)
 
-            self.log_mlflow_metric("val/COCOAP50", ap50, step=self.epoch + 1)
-            self.log_mlflow_metric("val/COCOAP50_95", ap50_95, step=self.epoch + 1)
-            self.log_mlflow_text(summary, f"val_summary_epoch_{self.epoch + 1}.txt")
+            self.mlflow_logger.log_metric("val/COCOAP50", ap50, step=self.epoch + 1)
+            self.mlflow_logger.log_metric("val/COCOAP50_95", ap50_95, step=self.epoch + 1)
+            self.mlflow_logger.log_text(summary, f"val_summary_epoch_{self.epoch + 1}.txt")
 
             logger.info("\n" + summary)
             
