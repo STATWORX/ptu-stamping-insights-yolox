@@ -5,9 +5,6 @@ import datetime
 import os
 import time
 from loguru import logger
-from azureml.core import Run
-import mlflow
-from mlflow.tracking import MlflowClient
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.tensorboard import SummaryWriter
