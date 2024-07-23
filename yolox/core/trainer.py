@@ -152,7 +152,7 @@ class Trainer:
         self.log_mlflow_metric(
             "iter_loss_iou", 
             float(outputs["iou_loss"]) / self.iter + 1, 
-            step=self.iter + 1
+            step=(self.iter + 1)
         )
 
         self.losses_iou.append(float(outputs["iou_loss"]))
@@ -410,7 +410,7 @@ class Trainer:
 
             self.log_mlflow_metric("val/COCOAP50", ap50, step=self.epoch + 1)
             self.log_mlflow_metric("val/COCOAP50_95", ap50_95, step=self.epoch + 1)
-            self.log_mlflow_text(summary, "val_summary.txt")
+            self.log_mlflow_text(summary, f"val_summary_epoch_{self.epoch + 1}.txt")
 
             logger.info("\n" + summary)
             
