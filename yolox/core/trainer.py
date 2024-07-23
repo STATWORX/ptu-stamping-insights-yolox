@@ -98,6 +98,12 @@ class Trainer:
                 value=value,
         )
 
+    def log_mlflow_text(self, text):
+        MlflowClient().log_text(
+                run_id=self.mlflow_run_id,
+                text=text
+        )
+
 
     def train(self):
         self.before_train()
@@ -392,6 +398,11 @@ class Trainer:
                     "train/epoch": self.epoch + 1,
                 })
                 self.wandb_logger.log_images(predictions)
+
+            self.log_mlflow_metric("val/COCOAP50", ap50, step=self.epoch)
+            self.log_mlflow_metric("val/COCOAP50_95", ap50_95, step=self.epoch)
+            self.log_mlflow_text(summary)
+
             logger.info("\n" + summary)
         synchronize()
 
