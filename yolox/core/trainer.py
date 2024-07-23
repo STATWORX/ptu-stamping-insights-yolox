@@ -98,10 +98,11 @@ class Trainer:
                 value=value,
         )
 
-    def log_mlflow_text(self, text):
+    def log_mlflow_text(self, text, artifact_file):
         MlflowClient().log_text(
                 run_id=self.mlflow_run_id,
-                text=text
+                text=text,
+                artifact_file=artifact_file
         )
 
 
@@ -120,7 +121,11 @@ class Trainer:
         for self.epoch in range(self.start_epoch, self.max_epoch):
             self.before_epoch()
             self.train_in_iter()
-            self.log_mlflow_metric("epoch_loss_iou", float(self.losses_iou[-1]), step=self.epoch)
+            self.log_mlflow_metric(
+                "epoch_loss_iou", 
+                float(self.losses_iou[-1]), 
+                step=self.epoch + 1
+            )
             self.after_epoch()
 
     def train_in_iter(self):
@@ -144,7 +149,11 @@ class Trainer:
 
         loss = outputs["total_loss"]
 
-        self.log_mlflow_metric("iter_loss_iou", float(outputs["iou_loss"]), step=self.iter)
+        self.log_mlflow_metric(
+            "iter_loss_iou", 
+            float(outputs["iou_loss"]) / self.iter + 1, 
+            step=self.iter + 1
+        )
 
         self.losses_iou.append(float(outputs["iou_loss"]))
         self.optimizer.zero_grad()
@@ -262,7 +271,7 @@ class Trainer:
         self.save_ckpt(ckpt_name="latest")
 
         epoch_loss_iou = sum(self.losses_iou) / len(self.losses_iou)
-        self.log_mlflow_metric("epoch_loss_iou_norm", epoch_loss_iou)
+        self.log_mlflow_metric("epoch_loss_iou_norm", epoch_loss_iou, step=self.epoch + 1)
 
         if (self.epoch + 1) % self.exp.eval_interval == 0:
             all_reduce_norm(self.model)
@@ -399,15 +408,16 @@ class Trainer:
                 })
                 self.wandb_logger.log_images(predictions)
 
-            self.log_mlflow_metric("val/COCOAP50", ap50, step=self.epoch)
-            self.log_mlflow_metric("val/COCOAP50_95", ap50_95, step=self.epoch)
-            self.log_mlflow_text(summary)
+            self.log_mlflow_metric("val/COCOAP50", ap50, step=self.epoch + 1)
+            self.log_mlflow_metric("val/COCOAP50_95", ap50_95, step=self.epoch + 1)
+            self.log_mlflow_text(summary, "val_summary.txt")
 
             logger.info("\n" + summary)
+            
         synchronize()
 
         self.save_ckpt("last_epoch", update_best_ckpt, ap=ap50_95)
-        if self.save_history_ckpt:
+        if self.save_history_ckpt and ((self.epoch + 1) % 5 == 0):
             self.save_ckpt(f"epoch_{self.epoch + 1}", ap=ap50_95)
 
     def save_ckpt(self, ckpt_name, update_best_ckpt=False, ap=None):
