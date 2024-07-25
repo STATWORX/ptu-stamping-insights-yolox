@@ -12,6 +12,7 @@ psutil
 tensorboard
 scikit-learn
 plotly
+kaleido
 
 # verified versions
 # pycocotools corresponds to https://github.com/ppwwyyxx/cocoapi
