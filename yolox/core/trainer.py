@@ -118,12 +118,6 @@ class Trainer:
 
         loss = outputs["total_loss"]
 
-        self.mlflow_logger.log_metric(
-            "iter_loss_iou", 
-            float(outputs["iou_loss"]) / (self.iter + 1), 
-            step=self.iter + 1
-        )
-
         self.losses_iou.append(float(outputs["iou_loss"]))
         self.optimizer.zero_grad()
         self.scaler.scale(loss).backward()
