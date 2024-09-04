@@ -4,8 +4,9 @@
 import re
 import setuptools
 import sys
-import pip
 import importlib
+import subprocess
+import ensurepip
 
 TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
 
@@ -14,7 +15,10 @@ if not TORCH_AVAILABLE:
     print("[INFO] Installing torch...")
 
     try:
-        pip.main(['install', 'torch'])
+        # Ensure pip is available
+        ensurepip.bootstrap()
+        # Install torch using pip
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "torch"])
     except Exception as e:
         print(f"[ERROR] Failed to install torch: {e}")
         sys.exit(1)
