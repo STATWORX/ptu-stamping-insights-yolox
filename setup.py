@@ -4,24 +4,30 @@
 import re
 import setuptools
 import sys
-import subprocess
+import pip
+import importlib
 
-TORCH_AVAILABLE = True
-try:
-    import torch
-    from torch.utils import cpp_extension
-except ImportError:
-    TORCH_AVAILABLE = False
+TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
+
+if not TORCH_AVAILABLE:
     print("[WARNING] Unable to import torch, pre-compiling ops will be disabled.")
     print("[INFO] Installing torch...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "torch"])
+
     try:
-        import torch
-        from torch.utils import cpp_extension
-        TORCH_AVAILABLE = True
-    except ImportError:
-        print("[ERROR] Failed to install torch. Please install it manually.")
+        pip.main(['install', 'torch'])
+    except Exception as e:
+        print(f"[ERROR] Failed to install torch: {e}")
         sys.exit(1)
+
+    # Check again if torch is available after installation
+    TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
+
+if TORCH_AVAILABLE:
+    import torch
+    from torch.utils import cpp_extension
+else:
+    print("[ERROR] Torch is still not available after installation.")
+    sys.exit(1)
 
 
 def get_package_dir():
