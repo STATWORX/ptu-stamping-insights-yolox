@@ -4,6 +4,7 @@
 import re
 import setuptools
 import sys
+import subprocess
 
 TORCH_AVAILABLE = True
 try:
@@ -12,6 +13,15 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
     print("[WARNING] Unable to import torch, pre-compiling ops will be disabled.")
+    print("[INFO] Installing torch...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "torch"])
+    try:
+        import torch
+        from torch.utils import cpp_extension
+        TORCH_AVAILABLE = True
+    except ImportError:
+        print("[ERROR] Failed to install torch. Please install it manually.")
+        sys.exit(1)
 
 
 def get_package_dir():
